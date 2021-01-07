@@ -1,0 +1,67 @@
+/*@!Encoding:936*/
+variables
+{
+  message ESCL_DiagReq ESCL_DiagReq_Frame;
+  
+  mstimer testMain;
+  byte txCanBuffer[8];
+  byte txDataBuffer[10];
+  byte sequenceNumber;
+  byte checkSum;
+  
+  byte uartBuffer[20];
+  byte uartBufferOld[20];
+  byte portNum = 5;
+}
+
+on start
+{
+  setTimer(testMain, 1000);
+}
+on timer testMain
+{
+  byte i;
+  byte sameFlag;
+  sameFlag = 0;
+  RS232Receive(portNum, uartBuffer, 8);
+
+  for(i = 0; i < 8; i++)
+  {
+    if(uartBufferOld[i] != uartBuffer[i])
+    {
+      sameFlag = 1;
+    }
+  }
+  if(1 == sameFlag)
+  {
+    write("%x %x %x %x  %x %x %x %x", uartBuffer[0], uartBuffer[1], uartBuffer[2], uartBuffer[3], uartBuffer[4], uartBuffer[5], uartBuffer[6], uartBuffer[7]);
+  }
+  
+  for(i = 0; i < 8; i++)
+  {
+    uartBufferOld[i] = uartBuffer[i];
+  }
+  setTimer(testMain, 1);
+
+}
+
+
+
+on key 'U'
+{
+  if (1 == RS232Open(portNum))
+  {
+    write("It works with port %x", portNum);
+  }
+  
+  if( 0!= RS232Configure(portNum,9600,8,2,0))
+  {
+    write("Set typical default at port %x", portNum);
+  }
+  
+  if( 0!= RS232SetHandshake(portNum,0,0,0,0,0))
+  {
+    write("No handshake at port %x", portNum);
+  }
+}
+

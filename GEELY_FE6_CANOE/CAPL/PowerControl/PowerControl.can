@@ -1,0 +1,318 @@
+/*@!Encoding:936*/
+variables
+{
+  char text_remoteCtrl[20] = ":SYSTem:REMote\n";
+  char text_localCtrl[20] = "SYSTem:LOCal\n";
+  char text_remote[20] = "SYSTem:RWLock\n";
+  char text_outputOn[20] = ":OUTPut:STATe 1\n";
+  char text_outputOff[20] = ":OUTPut:STATe 0\n";
+  char text_displayOffOff[20] = ":DISPlay: 0\n";
+  
+  char text_getError[20] = ":SYST:ERR?\n";
+  char text_setVoltage13[50] = ":SOURce:VOLTage:LEVel:IMMediate:AMPLitude 13\n";
+  char text_setVoltage5[50] = ":SOURce:VOLTage:LEVel:IMMediate:AMPLitude 5\n";
+  char text_setVoltage6[50] = ":SOURce:VOLTage:LEVel:IMMediate:AMPLitude 6\n";
+  char text_setVoltage7[50] = ":SOURce:VOLTage:LEVel:IMMediate:AMPLitude 7\n";
+  char text_setVoltage8[50] = ":SOURce:VOLTage:LEVel:IMMediate:AMPLitude 8\n";
+  char text_setVoltage10[50] = ":SOURce:VOLTage:LEVel:IMMediate:AMPLitude 10\n";
+  char text_setCurrent[50] = ":SOURce:CURRent:LEVel:IMMediate:AMPLitude 10\n";
+
+  byte buffer[50];
+  byte i;
+  byte length;
+  byte initFlag = 0;
+  byte controlFlag = 0;
+  byte controlStep = 0x01;
+  
+  msTimer powerSupply_init_timer;
+  msTimer powerSupply_control_timer;
+  msTimer checkAuth_timer;
+  msTimer checkUnLock_timer;
+  msTimer test_timer;
+  
+  byte escl_status;
+  byte expected_escl_status;
+}
+
+
+on timer powerSupply_init_timer
+{
+  if(1 == initFlag)
+  {
+    powerSupply_configuration(); 
+    setTimer(powerSupply_init_timer, 1000);
+  }
+}
+
+on timer powerSupply_control_timer
+{
+
+  dword timesNum;
+  dword testTimesCnt;
+  initFlag = 0;
+  
+  switch(controlStep)
+  {
+    /* Set voltage limitation to 13v */
+    case 0x01:
+      length= strlen(text_setVoltage13);
+      for(i = 0; i < length; i++)
+      {
+        buffer[i]= text_setVoltage13[i];
+      }
+      if (1 == RS232Send(3, buffer, length))
+      {
+        write("Power Supply: Set voltage limitation OK ");
+      }
+      /* Set waitting time 100 * 10ms */
+      timesNum = 100;
+      
+      controlStep = 0x11;
+      break;
+      
+    /* waitting */
+    case 0x11:
+      if(timesNum > 0)
+      {
+        timesNum = timesNum - 1;
+      }
+      else
+      {
+        controlStep = 0x02;
+      }
+      break;
+      
+    /* Power on */
+    case 0x02:
+      /* Power on */
+      powerSupply_control(1);
+      
+      /* Set waitting time 300 * 10ms */
+      timesNum = 300;
+      controlStep = 0x21;
+      break;
+      
+    /* waitting */
+    case 0x21:
+      if(timesNum > 0)
+      {
+        timesNum = timesNum - 1;
+      }
+      else
+      {
+        controlStep = 0x03;
+      }
+      break;
+      
+      
+    case 0x03:   
+      length= strlen(text_setVoltage8);
+      for(i = 0; i < length; i++)
+      {
+        buffer[i]= text_setVoltage8[i];
+      }
+      if (1 == RS232Send(3, buffer, length))
+      {
+        write("Power Supply: Set voltage 5V limitation OK ");
+      }
+      timesNum = 100;
+      controlStep = 0xB4;
+      break;
+      
+    /* waitting */
+    case 0xB4:
+      if(timesNum > 0)
+      {
+        timesNum = timesNum - 1;
+      }
+      else
+      {
+        controlStep = 0x04;
+      }
+      break;
+      
+    case 0x04:   
+      length= strlen(text_setVoltage13);
+      for(i = 0; i < length; i++)
+      {
+        buffer[i]= text_setVoltage13[i];
+      }
+      if (1 == RS232Send(3, buffer, length))
+      {
+        write("Power Supply: Set voltage 5V limitation OK ");
+      }
+      timesNum = 1000;
+      controlStep = 0xB4;
+      break;
+
+    /* waitting 1s */
+    case 0x08:
+      controlStep = 0x01;
+      
+      testTimesCnt = testTimesCnt + 1;
+      write("test times Num %d", testTimesCnt);
+      break;
+  }
+  
+  setTimer(powerSupply_control_timer, 5);
+}
+
+
+/* Initial RS232 function */
+on key 'I'
+{
+  if (1 == RS232Open(3))
+  {
+    write("It works with port 1.");
+  }
+  
+  if( 0!= RS232Configure(3,9600,8,2,0))
+  {
+    write("Set typical default at port 1.");
+  }
+  
+  if( 0!=RS232SetHandshake(3,0,0,0,0,0))
+  {
+    write("No handshake at port 1.");
+  }
+  
+  length= strlen(text_setVoltage13);
+  for(i = 0; i < length; i++)
+  {
+    buffer[i]= text_setVoltage13[i];
+  }
+  if (1 == RS232Send(3, buffer, length))
+  {
+    write("Power Supply: Set voltage limitation OK ");
+  }
+  
+  setTimer(powerSupply_init_timer, 1);
+  initFlag = 1;
+}
+
+on key 'P'
+{
+    length= strlen(text_outputOn);
+    for(i = 0; i < length; i++)
+    {
+      buffer[i]= text_outputOn[i];
+    }
+    if (1 == RS232Send(3, buffer, length))
+    {
+      write("Power Supply: Power On ");
+    }
+}
+on key 'S'
+{
+  controlStep = 0x01;
+}
+on key 'Q'
+{
+  cancelTimer(powerSupply_control_timer);
+}
+
+/* Keysight E3633A and E3634A DC Power Supplies */
+void powerSupply_configuration()
+{
+  byte step_temp = 0x01;
+  write("step_temp %d", step_temp);
+  switch(step_temp)
+  {
+    /* Set remote control */
+    case 0x01:
+      length= strlen(text_remoteCtrl);
+      for(i = 0; i < length; i++)
+      {
+        buffer[i]= text_remoteCtrl[i];
+      }
+      if (1 == RS232Send(3, buffer, length))
+      {
+        write("Power Supply: Set remote control OK ");
+      }
+      step_temp = 0x02;
+      break;
+      
+    /* Set voltage limitation */
+    case 0x02:
+      length= strlen(text_setVoltage13);
+      for(i = 0; i < length; i++)
+      {
+        buffer[i]= text_setVoltage13[i];
+      }
+      if (1 == RS232Send(3, buffer, length))
+      {
+        write("Power Supply: Set voltage limitation OK ");
+      }
+      step_temp = 0x03;
+      break;
+      
+    /* Set current limitation */
+    case 0x03:
+      length= strlen(text_setCurrent);
+      for(i = 0; i < length; i++)
+      {
+        buffer[i]= text_setCurrent[i];
+      }
+      if (1 == RS232Send(3, buffer, length))
+      {
+        write("Power Supply: Set current limitation OK ");
+      }
+      step_temp = 0x04;
+      
+      initFlag = 0;
+      controlFlag = 1;
+      setTimer(powerSupply_control_timer, 1000);
+      break;
+
+    default:
+      step_temp = 0x01;
+      break;
+  }
+}
+
+void powerSupply_control(byte control)
+{
+  if(1 == control)
+  {
+    length= strlen(text_outputOn);
+    for(i = 0; i < length; i++)
+    {
+      buffer[i]= text_outputOn[i];
+    }
+    if (1 == RS232Send(3, buffer, length))
+    {
+      write("Power Supply: Power On ");
+    }
+  }
+  else if(2 == control)
+  {
+    length= strlen(text_outputOff);
+    for(i = 0; i < length; i++)
+    {
+      buffer[i]= text_outputOff[i];
+    }
+    if (1 == RS232Send(3, buffer, length))
+    {
+      write("Power Supply: Power Off ");
+    }
+  }
+  else
+  {
+    ;
+  } 
+}
+
+
+on timer test_timer
+{
+  length= strlen(text_setVoltage13);
+  for(i = 0; i < length; i++)
+  {
+    buffer[i]= text_setVoltage13[i];
+  }
+  if (1 == RS232Send(3, buffer, length))
+  {
+    write("Power Supply: Set voltage limitation OK ");
+  }
+}
+

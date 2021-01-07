@@ -1,0 +1,142 @@
+/*@!Encoding:936*/
+variables
+{
+  enum TRANSPORT_STATUS
+  {
+    TP_INITIAL_STEP = 0,
+    TP_MONITOR_STEP,
+    TP_SEND_SINGLE_STEP,
+    TP_RECEIVED_SINGLE_STEP,
+    TP_SEND_FIRSTFRAME_STEP,
+    TP_RECEIVED_FIRSTFRAME_STEP,
+    TP_SEND_CONFRAME_STEP,
+    TP_RECEIVED_CONFRAME_STEP,
+    TP_SEND_FLOWFRAME_STEP,
+    TP_RECEIVED_FLOWFRAME_STEP,
+    TP_FINISHED
+  };
+  
+  
+  message ESCL_DiagReq ESCL_DiagReq_Frame;
+  
+  mstimer testMain;
+  byte txCanBuffer[8];
+  byte txDataBuffer[10];
+  byte uartId;
+  byte uartData;
+  byte sequenceNumber;
+  byte checkSum;
+  byte uartDataLen = 4;
+  byte uartAutoSendFlag = 0;
+  enum TRANSPORT_STATUS TransportStatus = TP_INITIAL_STEP;
+}
+
+on start
+{
+  uartId = 0x14;
+  uartData = 0x02;
+  sequenceNumber = 0;
+  checkSum = uartId ^ uartData ^ sequenceNumber;
+  uartDataLen = 0x04;
+  
+  setTimer(testMain, 10);
+}
+on timer testMain
+{
+  byte cntTemp;
+  
+  if(TP_SEND_FIRSTFRAME_STEP == TransportStatus)
+  {
+    ESCL_DiagReq_Frame.byte(0) = 0x10;
+    ESCL_DiagReq_Frame.byte(1) = 0x08;
+    ESCL_DiagReq_Frame.byte(2) = 0x2E;
+    ESCL_DiagReq_Frame.byte(3) = 0xFD;
+    ESCL_DiagReq_Frame.byte(4) = 0x42;
+    ESCL_DiagReq_Frame.byte(5) = uartId;
+    ESCL_DiagReq_Frame.byte(6) = uartData;
+    ESCL_DiagReq_Frame.byte(7) = sequenceNumber;
+    TransportStatus = TP_RECEIVED_FLOWFRAME_STEP;
+    output(ESCL_DiagReq_Frame);
+  }
+  
+  else if(TP_SEND_CONFRAME_STEP == TransportStatus)
+  {
+    ESCL_DiagReq_Frame.byte(0) = 0x21;
+    ESCL_DiagReq_Frame.byte(1) = checkSum;
+    ESCL_DiagReq_Frame.byte(2) = uartDataLen;
+    ESCL_DiagReq_Frame.byte(3) = 0xAA;
+    ESCL_DiagReq_Frame.byte(4) = 0xAA;
+    ESCL_DiagReq_Frame.byte(5) = 0xAA;
+    ESCL_DiagReq_Frame.byte(6) = 0xAA;
+    ESCL_DiagReq_Frame.byte(7) = 0xAA;
+    TransportStatus = TP_RECEIVED_FLOWFRAME_STEP;
+    output(ESCL_DiagReq_Frame);
+  }
+  
+  cntTemp++;
+  if(cntTemp > 10)
+  {
+    cntTemp = 0;
+    if(1 == uartAutoSendFlag)
+    {
+      if(TP_SEND_FIRSTFRAME_STEP != TransportStatus)
+      {
+        TransportStatus = TP_SEND_FIRSTFRAME_STEP;
+        sequenceNumber = sequenceNumber + 1;
+        if(sequenceNumber > 15)
+        {
+          sequenceNumber = 0;
+        }
+        checkSum = uartId ^ uartData ^ sequenceNumber;
+      }
+    }
+  }
+    
+  setTimer(testMain, 10);
+}
+
+
+on message 0x7D9
+{
+  if(TP_RECEIVED_FLOWFRAME_STEP == TransportStatus)
+  {
+    if(0x30 == this.byte(0))
+    {
+      TransportStatus = TP_SEND_CONFRAME_STEP;
+    }
+  }
+  if(TP_RECEIVED_FLOWFRAME_STEP == TransportStatus)
+  {
+    if(0x6E == this.byte(1))
+    {
+      TransportStatus = TP_INITIAL_STEP;
+    }
+    if(0x7F == this.byte(0))
+    {
+      TransportStatus = TP_INITIAL_STEP;
+    }
+  }
+}
+
+ON key 'A'
+{
+  TransportStatus = TP_SEND_FIRSTFRAME_STEP;
+  sequenceNumber = sequenceNumber + 1;
+  if(sequenceNumber > 15)
+  {
+    sequenceNumber = 0;
+  }
+  checkSum = uartId ^ uartData ^ sequenceNumber;
+}
+
+ON key 'B'
+{
+  if(0 == uartAutoSendFlag)
+  {
+    uartAutoSendFlag = 1;
+  }
+  else
+  {
+    uartAutoSendFlag = 0;
+  }
+}

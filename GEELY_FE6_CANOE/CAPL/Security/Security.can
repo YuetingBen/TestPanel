@@ -1,0 +1,127 @@
+/*@!Encoding:1252*/
+includes
+{
+  
+}
+
+variables
+{
+ message ESCL_DiagReq diagmessage;
+ const SECURITY_ACCESS_DATA_LENGTH = 4;
+  
+ int seedArray[SECURITY_ACCESS_DATA_LENGTH];
+ int calData[SECURITY_ACCESS_DATA_LENGTH];
+ int returnKey[SECURITY_ACCESS_DATA_LENGTH];
+ int xorArray_lv01_lv03_lv11[SECURITY_ACCESS_DATA_LENGTH] = {0xE9, 0x4A, 0x22, 0x91};
+ int xorArray_lv61[SECURITY_ACCESS_DATA_LENGTH] = {0x49, 0x22, 0xA5, 0x0F};
+ 
+ long SecurityAccess_Sink;
+}
+
+on start
+{
+  SecurityAccess_Sink = writeCreate("Security Access");
+  writeClear(SecurityAccess_Sink);
+}
+
+void security_accessLv01_calc()
+{
+  int i = 0;
+  for (i = 0; i < SECURITY_ACCESS_DATA_LENGTH; i++)
+  {
+    calData[i] = seedArray[i]^xorArray_lv01_lv03_lv11[i];
+  }
+  
+  returnKey[0] = ((calData[3]&0x0F)<<4) | ((calData[3]&0xF0)>>0);
+  returnKey[1] = ((calData[1]&0x0F)<<4) | ((calData[0]&0xF0)>>4);
+  returnKey[2] = ((calData[1]&0xF0)<<0) | ((calData[2]&0xF0)>>4);
+  returnKey[3] = ((calData[0]&0x0F)<<4) | ((calData[2]&0x0F)>>0);	
+}
+
+
+void security_accessLv03_calc()
+{
+ int i = 0;
+ for (i = 0; i < SECURITY_ACCESS_DATA_LENGTH; i++)
+  {
+    calData[i] = ((seedArray[i]&0xF8)>>3)^xorArray_lv01_lv03_lv11[i];
+  }
+  
+  returnKey[0] = ((calData[3]&0x07)<<5) | ((calData[0]&0xF8)>>3);
+  returnKey[1] = ((calData[0]&0x07)<<5) | ((calData[2]&0x1F)>>0);
+  returnKey[2] = ((calData[1]&0xF8)<<0) | ((calData[3]&0xE0)>>5);
+  returnKey[3] = ((calData[2]&0xF8)<<0) | ((calData[1]&0x07)>>0);
+}
+
+void security_accessLv11_calc()
+{
+ int i = 0;
+  for (i = 0; i < SECURITY_ACCESS_DATA_LENGTH; i++)
+  {
+    calData[i] = seedArray[i]^xorArray_lv01_lv03_lv11[i];
+  }
+  
+  returnKey[0] = ((calData[2]&0x03)<<6) | ((calData[3]&0xFC)>>2);
+  returnKey[1] = ((calData[3]&0x03)<<6) | ((calData[0]&0x3F)>>0);
+  returnKey[2] = ((calData[0]&0xFC)<<0) | ((calData[1]&0xC0)>>6);
+  returnKey[3] = ((calData[1]&0xFC)<<0) | ((calData[2]&0x03)>>0);
+}
+
+void security_accessLv61_calc()
+{
+ int i = 0;
+  for (i = 0; i < SECURITY_ACCESS_DATA_LENGTH; i++)
+  {
+    calData[i] = seedArray[i]^xorArray_lv61[i];
+  }
+  
+  returnKey[0] = ((calData[2]&0x03)<<6) | ((calData[3]&0xFC)>>2);
+  returnKey[1] = ((calData[3]&0x03)<<6) | ((calData[0]&0x3F)>>0);
+  returnKey[2] = ((calData[0]&0xFC)<<0) | ((calData[1]&0xC0)>>6);
+  returnKey[3] = ((calData[1]&0xFC)<<0) | ((calData[2]&0x03)>>0);
+}
+
+on message ESCL_DiagResp
+{
+  if (this.byte(1)== 0x67)
+  {
+    if ((this.byte(2) == 0x01)||(this.byte(2) == 0x03)||(this.byte(2) == 0x11)||(this.byte(2) == 0x61))
+    {
+      if ((this.byte(3)!=0) && (this.byte(4)!=0) && (this.byte(5)!=0) && (this.byte(6)!=0))
+      {
+      seedArray[0] = this.byte(3);
+      seedArray[1] = this.byte(4);
+      seedArray[2] = this.byte(5);
+      seedArray[3] = this.byte(6);
+    
+      if (this.byte(2) == 0x01)
+      {
+        security_accessLv01_calc();
+      }
+      else if (this.byte(2) == 0x03)
+      {
+        security_accessLv03_calc();
+      }
+      else if (this.byte(2) == 0x11)
+      {
+        security_accessLv11_calc();
+      }
+      else if (this.byte(2) == 0x61)
+      {
+        security_accessLv61_calc();
+      }
+      writeEx(SecurityAccess_Sink, 0, "SEED: %x %x %x %x\n", seedArray[0], seedArray[1], seedArray[2], seedArray[3]); 
+      writeEx(SecurityAccess_Sink, 0, "KEY:  %x %x %x %x\n", returnKey[0], returnKey[1], returnKey[2], returnKey[3]);
+      diagmessage.byte(0) = 0x06;
+      diagmessage.byte(1) = 0x27;
+      diagmessage.byte(2) = this.byte(2)+1;
+      diagmessage.byte(3) = returnKey[0];
+      diagmessage.byte(4) = returnKey[1];
+      diagmessage.byte(5) = returnKey[2];
+      diagmessage.byte(6) = returnKey[3];
+      
+      output(diagmessage); 
+      }
+    }
+  }
+}

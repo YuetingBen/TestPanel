@@ -1,0 +1,50 @@
+/*@!Encoding:936*/
+includes
+{
+  
+}
+
+variables
+{
+  msTimer VSO_HW_timer;
+  byte highLowFlag = 0;
+  
+}
+
+on start
+{
+  @IO::VN1600_1::DOUT = 1;
+}
+
+on timer VSO_HW_timer
+{
+  if(1 == highLowFlag)
+  {
+    highLowFlag = 0;
+    @IO::VN1600_1::DOUT = highLowFlag;
+  }
+  else
+  {
+    highLowFlag = 1;
+    @IO::VN1600_1::DOUT = highLowFlag;
+  }
+  setTimer(VSO_HW_timer, (360 / @Speed::hwSpeed));
+}
+
+on sysvar_update Speed::hwSpeed
+{
+  if(@Speed::hwSpeed >= 1)
+  {
+    setTimer(VSO_HW_timer,10);
+  }
+  else
+  {
+    @IO::VN1600_1::DOUT = 1;
+    cancelTimer(VSO_HW_timer);
+  }
+  
+  if(1 == @Speed::synchronizeFlag)
+  {
+    @Speed::swSpeed = @Speed::hwSpeed;
+  }
+}

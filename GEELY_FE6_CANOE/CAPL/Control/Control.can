@@ -1,0 +1,131 @@
+/*@!Encoding:936*/
+includes
+{
+  #pragma library("..\Control\AESCapl.dll")
+}
+
+variables
+{
+  message ESCL_DiagReq ESCL_DiagReq_Frame;
+  message PEPS_ESCLAuth PEPS_ESCLAuth_Frame;
+  message ESCL_PEPSAuth ESCL_PEPSAuth_Frame;
+  
+  message PEPS_KeyReminder PEPS_KeyReminder_Frame;
+  
+  msTimer testTimer;
+  
+  //char aesEsk_Ascii[33] = "00112233445566778899aabbccddeeff";
+  //char aesEsk_Ascii[33] = "C3C8AA85B65009D62293A440AF121ABB";
+  char aesEsk_Ascii[33] = "01000000000000000000000000000000";
+  //char aesEsk_Ascii[33] = "ACE97AE4042A1AE0DA2DED23B82BAE7B";
+  
+  byte aesSeed_au8[16];
+  byte aesKey_au8[16];
+  byte aesEsk_byte[16];
+  byte aesFixedCode_au8[8] = {0x94, 0x25, 0x45, 0x47, 0x46, 0x4A, 0x5B, 0x7D};
+  byte randomNumber_au8[4];
+}
+
+on start
+{
+  byte i;
+  char tmpString[5];
+  long tmp;
+  
+  /* Change esk from ASCII to Hex */
+  for( i = 0; i < 32; i = i+2)
+  {
+    tmpString[0] = '0';
+    tmpString[1] = 'x';
+    tmpString[2] = aesEsk_Ascii[0 + i];
+    tmpString[3] = aesEsk_Ascii[1 + i];
+    tmpString[4] = '\0';
+    strtol(tmpString, tmp);
+    aesEsk_byte[i / 2] = tmp & 0xFF;
+  }
+}
+
+on sysvar ACTION::Commands
+{
+  if(@sysvar::ACTION::Commands::Lock == @sysvar::ACTION::Commands)
+  {
+    PEPS_KeyReminder_Frame.PEPS_Auth_ESCL_Req = 0x00;
+    PEPS_KeyReminder_Frame.PEPS_LOCK_CMD = 0x01;
+    PEPS_KeyReminder_Frame.PEPS_RKECommand = 0x00;
+    output(PEPS_KeyReminder_Frame);
+  }
+  else if(@sysvar::ACTION::Commands::Unlock == @sysvar::ACTION::Commands)
+  {
+    PEPS_KeyReminder_Frame.PEPS_Auth_ESCL_Req = 0x01;
+    PEPS_KeyReminder_Frame.PEPS_LOCK_CMD = 0x00;
+    PEPS_KeyReminder_Frame.PEPS_RKECommand = 0x00;
+    output(PEPS_KeyReminder_Frame);
+  }
+  @sysvar::ACTION::Commands = 0;
+}
+
+on message ESCL_PEPSAuth
+{
+  byte index_u8;
+  
+  randomNumber_au8[0] = this.byte(0);
+  randomNumber_au8[1] = this.byte(1);
+  randomNumber_au8[2] = this.byte(2);
+  randomNumber_au8[3] = this.byte(3);
+
+  aesSeed_au8[0] = randomNumber_au8[0];
+  aesSeed_au8[1] = randomNumber_au8[1];
+  aesSeed_au8[2] = randomNumber_au8[2];
+  aesSeed_au8[3] = randomNumber_au8[3];
+
+  aesSeed_au8[4] = aesEsk_byte[0];
+  aesSeed_au8[5] = aesEsk_byte[1];
+  aesSeed_au8[6] = aesEsk_byte[2];
+  aesSeed_au8[7] = aesEsk_byte[3];
+  
+  for(index_u8 = 0; index_u8 < 8; index_u8++ )
+  {
+    aesSeed_au8[index_u8 + 8] = aesFixedCode_au8[index_u8];
+  }
+  
+  AESEncrypt(aesEsk_Ascii, aesSeed_au8, aesKey_au8); 
+  
+  for(index_u8 = 0; index_u8 < 8; index_u8++ )
+  {
+    aesSeed_au8[index_u8] = aesFixedCode_au8[index_u8];
+  }
+  
+  for(index_u8 = 0; index_u8 < 8; index_u8++ )
+  {
+    aesSeed_au8[index_u8 + 8] = aesKey_au8[index_u8 + 8];
+  }
+  
+  AESEncrypt(aesEsk_Ascii, aesSeed_au8, aesKey_au8);
+  
+  for(index_u8 = 0; index_u8 < 8; index_u8++)
+  {
+    PEPS_ESCLAuth_Frame.byte(index_u8) = aesKey_au8[index_u8+8];
+  }
+  setTimer(testTimer, 26);
+  output(PEPS_ESCLAuth_Frame);
+}
+
+on timer testTimer
+{
+  output(PEPS_ESCLAuth_Frame);
+}
+
+On key 'a'
+{
+  @sysvar::ACTION::Commands = @sysvar::ACTION::Commands::Lock;
+}
+On key 's'
+{
+  @sysvar::ACTION::Commands = @sysvar::ACTION::Commands::Unlock;
+}
+
+
+on busOff
+{
+  resetCan();
+}
